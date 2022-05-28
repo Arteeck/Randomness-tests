@@ -15,21 +15,25 @@ B = [1 / 6, 5 / 24, 11 / 120, 19 / 720, 29 / 5040, 1 / 890]
 
 
 def main():
-    count = 10000
-    prime_number = 5
-    mod = 10 + prime_number
-    multiplier = 30 - prime_number
-    incrementer = 71
-    random_sequence = list(islice(create_lcg(mod, multiplier, incrementer, 1), 0, count))
-    kolmogorov_smirnov_test(random_sequence, mod)
-    chi_squared_test(random_sequence, mod, 10)
-    gap_test(random_sequence, mod)
-    poker_test(random_sequence, mod)
-    serial_test(random_sequence, mod)
-    permutation_test(random_sequence)
-    runs_up_down_test(random_sequence)
-    runs_up_length_test(random_sequence)
-    runs_down_length_test(random_sequence)
+    count = 1000
+    mod = 997
+    first_sequence = list(islice(create_lcg(mod, 53, 101, 1), 0, count))
+    second_sequence = list(islice(create_lcg(mod, 771, 103, 37), 0, count))
+    binary_fibonacci = get_binary_fibonacci_string(count)
+    plexus_sequence = [first_sequence[i] if binary_fibonacci[i] == '1' else second_sequence[i] for i in range(count)]
+    messages = ['Первая', 'Вторая', 'Сплетенная']
+    sequences = [first_sequence, second_sequence, plexus_sequence]
+    for i in range(len(sequences)):
+        print(f'-------------- {messages[i]} последовательность --------------')
+        kolmogorov_smirnov_test(sequences[i], mod)
+        chi_squared_test(sequences[i], mod, 10)
+        gap_test(sequences[i], mod)
+        poker_test(sequences[i], mod)
+        serial_test(sequences[i], mod)
+        permutation_test(sequences[i])
+        runs_up_down_test(sequences[i])
+        runs_up_length_test(sequences[i])
+        runs_down_length_test(sequences[i])
 
 
 def kolmogorov_smirnov_test(random_list, mod):
@@ -94,19 +98,85 @@ def gap_test(random_list, mod):
 
 
 def create_poker_values(mod):
-    if mod < 10 or mod > 100:
-        raise ValueError("В данный момент покер-тест поддерживает модуль не больше 100 и не меньше 10")
-    pair_numbers = int((mod - 1) / 11)
-    return 10 / mod, (mod - 10 - pair_numbers) / mod, pair_numbers / mod
+    if mod < 10 or mod > 1000:
+        raise ValueError("В данный момент покер-тест поддерживает модуль не больше 1000 и не меньше 10")
+    if mod <= 100:
+        pair_digits = int((mod - 1) / 11)
+        return 10 / mod, (mod - 10 - pair_digits) / mod, pair_digits / mod
+
+    triple_digits = (mod - 1) // 111
+    pair_digits = ((mod - 1) // 100 - 1) * 27 + ((mod - 1) % 100 // 10) * 2
+    if (mod - 1) // 10 % 11 == 0:
+        pair_digits += (mod - 1) % 10 + 1
+        if (mod - 1) % 10 >= (mod - 1) // 100:
+            pair_digits -= 1
+    else:
+        if (mod - 1) // 10 % 10 > (mod - 1) // 100:
+            pair_digits += 7
+        if (mod - 1) % 10 >= (mod - 1) // 10 % 10:
+            pair_digits += 1
+        if (mod - 1) % 10 >= (mod - 1) // 100:
+            pair_digits += 1
+    different_digits = mod - 100 - triple_digits - pair_digits
+
+    return 100 / mod, different_digits / mod, pair_digits / mod, triple_digits / mod
+
+
+def calculate_poker_counts_three_digits(numbers):
+    result = [0, 0, 0, 0]
+    for i in numbers:
+        if i < 100:
+            result[0] += 1
+        elif i % 111 == 0:
+            result[3] += 1
+        else:
+            digits = set()
+            while i > 0:
+                digits.add(i % 10)
+                i //= 10
+            if len(digits) == 3:
+                result[1] += 1
+            else:
+                result[2] += 1
+    return result
 
 
 def poker_test(random_list, mod):
-    expected_poker_counts = [i * len(random_list) for i in create_poker_values(mod)]
+    if mod <= 100:
+        poker_test_two_digits(random_list, mod)
+    else:
+        poker_test_three_digits(random_list, mod)
+
+
+def poker_test_two_digits(random_list, mod):
+    expected_poker_counts = None
+    try:
+        expected_poker_counts = [i * len(random_list) for i in create_poker_values(mod)]
+    except ValueError as err:
+        print(err)
+        return
     poker_values_count = len(expected_poker_counts)
     pair_numbers = len(list(filter(lambda x: x != 0 and x % 11 == 0, random_list)))
     one_digit_numbers = len(list(filter(lambda x: x < 10, random_list)))
     not_pair_numbers = len(random_list) - pair_numbers - one_digit_numbers
     actual_poker_counts = one_digit_numbers, not_pair_numbers, pair_numbers
+    chi_square = sum(map(lambda x: (actual_poker_counts[x] - expected_poker_counts[x]) ** 2 / expected_poker_counts[x], range(poker_values_count)))
+    critical_value = chi2.ppf(0.95, poker_values_count - 1)
+    if chi_square > critical_value:
+        print("По покер-тесту данная последовательность не является случайной")
+    else:
+        print("По покер-тесту нет оснований считать, что данная последовательность не является случайной")
+
+
+def poker_test_three_digits(random_list, mod):
+    expected_poker_counts = None
+    try:
+        expected_poker_counts = [i * len(random_list) for i in create_poker_values(mod)]
+    except ValueError as err:
+        print(err)
+        return
+    poker_values_count = len(expected_poker_counts)
+    actual_poker_counts = calculate_poker_counts_three_digits(random_list)
     chi_square = sum(map(lambda x: (actual_poker_counts[x] - expected_poker_counts[x]) ** 2 / expected_poker_counts[x], range(poker_values_count)))
     critical_value = chi2.ppf(0.95, poker_values_count - 1)
     if chi_square > critical_value:
@@ -206,6 +276,20 @@ def create_lcg(mod, multiplier, incrementer, seed):
     while True:
         value = (multiplier * value + incrementer) % mod
         yield value
+
+
+def get_binary_fibonacci_string(min_length):
+    previous = '1'
+    if min_length < 1:
+        return previous
+    current = '01'
+    if min_length < 2:
+        return current
+    while len(current) < min_length:
+        temp = current
+        current = current + previous
+        previous = temp
+    return current
 
 
 if __name__ == '__main__':
